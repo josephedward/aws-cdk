@@ -119,7 +119,7 @@ describe('cluster', () => {
               Action: 'sts:AssumeRole',
               Effect: 'Allow',
               Principal: {
-                Service: { 'Fn::Join': ['', ['ec2.', { Ref: 'AWS::URLSuffix' }]] },
+                Service: 'ec2.amazonaws.com',
               },
             },
           ],
@@ -288,7 +288,7 @@ describe('cluster', () => {
               Action: 'sts:AssumeRole',
               Effect: 'Allow',
               Principal: {
-                Service: { 'Fn::Join': ['', ['ec2.', { Ref: 'AWS::URLSuffix' }]] },
+                Service: 'ec2.amazonaws.com',
               },
             },
           ],
@@ -652,7 +652,7 @@ describe('cluster', () => {
               Action: 'sts:AssumeRole',
               Effect: 'Allow',
               Principal: {
-                Service: { 'Fn::Join': ['', ['ec2.', { Ref: 'AWS::URLSuffix' }]] },
+                Service: 'ec2.amazonaws.com',
               },
             },
           ],
@@ -1007,6 +1007,23 @@ describe('cluster', () => {
 
   });
 
+  test('allows setting cluster ServiceConnectDefaults.Namespace property when useAsServiceConnectDefault is true', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const vpc = new ec2.Vpc(stack, 'MyVpc', {});
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster', { vpc });
+
+    // WHEN
+    cluster.addDefaultCloudMapNamespace({
+      name: 'foo.com',
+      useForServiceConnect: true,
+    });
+
+    // THEN
+    expect((cluster as any)._cfnCluster.serviceConnectDefaults.namespace).toBe('foo.com');
+  });
+
   /*
    * TODO:v2.0.0 END OF OBSOLETE BLOCK
    */
@@ -1277,6 +1294,7 @@ describe('cluster', () => {
 
 
   });
+
 
   test('export/import of a cluster with a namespace', () => {
     // GIVEN
@@ -1619,17 +1637,7 @@ describe('cluster', () => {
             Action: 'sts:AssumeRole',
             Effect: 'Allow',
             Principal: {
-              Service: {
-                'Fn::Join': [
-                  '',
-                  [
-                    'ec2.',
-                    {
-                      Ref: 'AWS::URLSuffix',
-                    },
-                  ],
-                ],
-              },
+              Service: 'ec2.amazonaws.com',
             },
           },
         ],
@@ -1723,6 +1731,143 @@ describe('cluster', () => {
       },
     });
 
+  });
+
+  testDeprecated('updatePolicy set when passed without updateType', () => {
+    // GIVEN
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'test');
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster');
+    cluster.addCapacity('bottlerocket-asg', {
+      instanceType: new ec2.InstanceType('c5.large'),
+      machineImage: new ecs.BottleRocketImage(),
+      updatePolicy: autoscaling.UpdatePolicy.replacingUpdate(),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::AutoScaling::AutoScalingGroup', {
+      UpdatePolicy: {
+        AutoScalingReplacingUpdate: {
+          WillReplace: true,
+        },
+      },
+    });
+  });
+
+  testDeprecated('undefined updateType & updatePolicy replaced by default updatePolicy', () => {
+    // GIVEN
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'test');
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster');
+    cluster.addCapacity('bottlerocket-asg', {
+      instanceType: new ec2.InstanceType('c5.large'),
+      machineImage: new ecs.BottleRocketImage(),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::AutoScaling::AutoScalingGroup', {
+      UpdatePolicy: {
+        AutoScalingReplacingUpdate: {
+          WillReplace: true,
+        },
+      },
+    });
+  });
+
+  testDeprecated('updateType.NONE replaced by updatePolicy equivalent', () => {
+    // GIVEN
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'test');
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster');
+    cluster.addCapacity('bottlerocket-asg', {
+      instanceType: new ec2.InstanceType('c5.large'),
+      machineImage: new ecs.BottleRocketImage(),
+      updateType: autoscaling.UpdateType.NONE,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::AutoScaling::AutoScalingGroup', {
+      UpdatePolicy: {
+        AutoScalingScheduledAction: {
+          IgnoreUnmodifiedGroupSizeProperties: true,
+        },
+      },
+    });
+  });
+
+  testDeprecated('updateType.REPLACING_UPDATE replaced by updatePolicy equivalent', () => {
+    // GIVEN
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'test');
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster');
+    cluster.addCapacity('bottlerocket-asg', {
+      instanceType: new ec2.InstanceType('c5.large'),
+      machineImage: new ecs.BottleRocketImage(),
+      updateType: autoscaling.UpdateType.REPLACING_UPDATE,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::AutoScaling::AutoScalingGroup', {
+      UpdatePolicy: {
+        AutoScalingReplacingUpdate: {
+          WillReplace: true,
+        },
+      },
+    });
+  });
+
+  testDeprecated('updateType.ROLLING_UPDATE replaced by updatePolicy equivalent', () => {
+    // GIVEN
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'test');
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster');
+    cluster.addCapacity('bottlerocket-asg', {
+      instanceType: new ec2.InstanceType('c5.large'),
+      machineImage: new ecs.BottleRocketImage(),
+      updateType: autoscaling.UpdateType.ROLLING_UPDATE,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::AutoScaling::AutoScalingGroup', {
+      UpdatePolicy: {
+        AutoScalingRollingUpdate: {
+          WaitOnResourceSignals: false,
+          PauseTime: 'PT0S',
+          SuspendProcesses: [
+            'HealthCheck',
+            'ReplaceUnhealthy',
+            'AZRebalance',
+            'AlarmNotification',
+            'ScheduledActions',
+          ],
+        },
+        AutoScalingScheduledAction: {
+          IgnoreUnmodifiedGroupSizeProperties: true,
+        },
+      },
+    });
+  });
+
+  testDeprecated('throws when updatePolicy and updateType both specified', () => {
+    // GIVEN
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'test');
+
+    const cluster = new ecs.Cluster(stack, 'EcsCluster');
+
+    expect(() => {
+      cluster.addCapacity('bottlerocket-asg', {
+        instanceType: new ec2.InstanceType('c5.large'),
+        machineImage: new ecs.BottleRocketImage(),
+        updatePolicy: autoscaling.UpdatePolicy.replacingUpdate(),
+        updateType: autoscaling.UpdateType.REPLACING_UPDATE,
+      });
+    }).toThrow("Cannot set 'signals'/'updatePolicy' and 'updateType' together. Prefer 'signals'/'updatePolicy'");
   });
 
   testDeprecated('allows specifying capacityProviders (deprecated)', () => {

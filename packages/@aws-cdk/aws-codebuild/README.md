@@ -20,24 +20,6 @@ started quickly by using prepackaged build environments, or you can create
 custom build environments that use your own build tools. With CodeBuild, you are
 charged by the minute for the compute resources you use.
 
-## Installation
-
-Install the module:
-
-```console
-$ npm i @aws-cdk/aws-codebuild
-```
-
-Import it into your code:
-
-```ts nofixture
-import * as codebuild from '@aws-cdk/aws-codebuild';
-```
-
-The `codebuild.Project` construct represents a build project resource. See the
-reference documentation for a comprehensive list of initialization properties,
-methods and attributes.
-
 ## Source
 
 Build projects are usually associated with a _source_, which is specified via
@@ -122,7 +104,7 @@ const bbSource = codebuild.Source.bitBucket({
 
 ### For all Git sources
 
-For all Git sources, you can fetch submodules while cloing git repo.
+For all Git sources, you can fetch submodules while cloning git repo.
 
 ```ts
 const gitHubSource = codebuild.Source.gitHub({
@@ -404,6 +386,50 @@ new codebuild.Project(this, 'Project', {
 })
 ```
 
+## Debugging builds interactively using SSM Session Manager
+
+Integration with SSM Session Manager makes it possible to add breakpoints to your
+build commands, pause the build there and log into the container to interactively
+debug the environment.
+
+To do so, you need to:
+
+* Create the build with `ssmSessionPermissions: true`.
+* Use a build image with SSM agent installed and configured (default CodeBuild images come with the image preinstalled).
+* Start the build with [debugSessionEnabled](https://docs.aws.amazon.com/codebuild/latest/APIReference/API_StartBuild.html#CodeBuild-StartBuild-request-debugSessionEnabled) set to true.
+
+If these conditions are met, execution of the command `codebuild-breakpoint`
+will suspend your build and allow you to attach a Session Manager session from
+the CodeBuild console.
+
+For more information, see [View a running build in Session
+Manager](https://docs.aws.amazon.com/codebuild/latest/userguide/session-manager.html)
+in the CodeBuild documentation.
+
+Example:
+
+```ts
+new codebuild.Project(this, 'Project', {
+  environment: {
+    buildImage: codebuild.LinuxBuildImage.STANDARD_6_0,
+  },
+  ssmSessionPermissions: true,
+  buildSpec: codebuild.BuildSpec.fromObject({
+    version: '0.2',
+    phases: {
+      build: {
+        commands: [
+          // Pause the build container if possible
+          'codebuild-breakpoint',
+          // Regular build in a script in the repository
+          './my-build.sh',
+        ],
+      },
+    },
+  }),
+})
+```
+
 ## Credentials
 
 CodeBuild allows you to store credentials used when communicating with various sources,
@@ -526,6 +552,8 @@ declare const reportGroup: codebuild.ReportGroup;
 
 reportGroup.grantWrite(project);
 ```
+
+The created policy will adjust to the report group type. If no type is specified when creating the report group the created policy will contain the action for the test report group type.
 
 For more information on the test reports feature,
 see the [AWS CodeBuild documentation](https://docs.aws.amazon.com/codebuild/latest/userguide/test-reporting.html).

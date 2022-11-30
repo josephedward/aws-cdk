@@ -72,6 +72,7 @@ export class Runtime {
 
   /**
    * The NodeJS 12.x runtime (nodejs12.x)
+   * @deprecated Legacy runtime no longer supported by AWS Lambda. Migrate to the latest NodeJS runtime.
    */
   public static readonly NODEJS_12_X = new Runtime('nodejs12.x', RuntimeFamily.NODEJS, { supportsInlineCode: true });
 
@@ -84,6 +85,11 @@ export class Runtime {
    * The NodeJS 16.x runtime (nodejs16.x)
    */
   public static readonly NODEJS_16_X = new Runtime('nodejs16.x', RuntimeFamily.NODEJS, { supportsInlineCode: true });
+
+  /**
+   * The NodeJS 18.x runtime (nodejs18.x) supported in all commercial regions except me-central-1, eu-central-2 and eu-south-2.
+   */
+  public static readonly NODEJS_18_X = new Runtime('nodejs18.x', RuntimeFamily.NODEJS, { supportsInlineCode: true });
 
   /**
    * The Python 2.7 runtime (python2.7)

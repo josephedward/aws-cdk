@@ -10,6 +10,7 @@ import { FunctionAssociation } from './function';
 import { GeoRestriction } from './geo-restriction';
 import { IKeyGroup } from './key-group';
 import { IOriginAccessIdentity } from './origin-access-identity';
+import { formatDistributionArn } from './private/utils';
 
 /**
  * HTTP status code to failover to second origin
@@ -758,6 +759,13 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
         this.distributionDomainName = attrs.domainName;
         this.distributionId = attrs.distributionId;
       }
+
+      public grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant {
+        return iam.Grant.addToPrincipal({ grantee, actions, resourceArns: [formatDistributionArn(this)] });
+      }
+      public grantCreateInvalidation(identity: iam.IGrantable): iam.Grant {
+        return this.grant(identity, 'cloudfront:CreateInvalidation');
+      }
     }();
   }
 
@@ -817,18 +825,6 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
       props.comment && props.comment.length > 128
         ? `${props.comment.slice(0, 128 - 3)}...`
         : props.comment;
-
-    let distributionConfig: CfnDistribution.DistributionConfigProperty = {
-      comment: trimmedComment,
-      enabled: props.enabled ?? true,
-      defaultRootObject: props.defaultRootObject ?? 'index.html',
-      httpVersion: props.httpVersion || HttpVersion.HTTP2,
-      priceClass: props.priceClass || PriceClass.PRICE_CLASS_100,
-      ipv6Enabled: props.enableIpV6 ?? true,
-      // eslint-disable-next-line max-len
-      customErrorResponses: props.errorConfigurations, // TODO: validation : https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-cloudfront-distribution-customerrorresponse.html#cfn-cloudfront-distribution-customerrorresponse-errorcachingminttl
-      webAclId: props.webACLId,
-    };
 
     const behaviors: BehaviorWithOrigin[] = [];
 
@@ -892,18 +888,11 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
           quantity: originGroups.length,
         }
         : undefined;
-    distributionConfig = {
-      ...distributionConfig,
-      origins,
-      originGroups: originGroupsDistConfig,
-    };
 
     const defaultBehaviors = behaviors.filter(behavior => behavior.isDefaultBehavior);
     if (defaultBehaviors.length !== 1) {
       throw new Error('There can only be one default behavior across all sources. [ One default behavior per distribution ].');
     }
-
-    distributionConfig = { ...distributionConfig, defaultCacheBehavior: this.toBehavior(defaultBehaviors[0], props.viewerProtocolPolicy) };
 
     const otherBehaviors: CfnDistribution.CacheBehaviorProperty[] = [];
     for (const behavior of behaviors.filter(b => !b.isDefaultBehavior)) {
@@ -913,7 +902,23 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
       otherBehaviors.push(this.toBehavior(behavior, props.viewerProtocolPolicy) as CfnDistribution.CacheBehaviorProperty);
     }
 
-    distributionConfig = { ...distributionConfig, cacheBehaviors: otherBehaviors.length > 0 ? otherBehaviors : undefined };
+    let distributionConfig: CfnDistribution.DistributionConfigProperty = {
+      comment: trimmedComment,
+      enabled: props.enabled ?? true,
+      defaultRootObject: props.defaultRootObject ?? 'index.html',
+      httpVersion: props.httpVersion || HttpVersion.HTTP2,
+      priceClass: props.priceClass || PriceClass.PRICE_CLASS_100,
+      ipv6Enabled: props.enableIpV6 ?? true,
+      // eslint-disable-next-line max-len
+      customErrorResponses: props.errorConfigurations, // TODO: validation : https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-cloudfront-distribution-customerrorresponse.html#cfn-cloudfront-distribution-customerrorresponse-errorcachingminttl
+      webAclId: props.webACLId,
+
+      origins,
+      originGroups: originGroupsDistConfig,
+
+      defaultCacheBehavior: this.toBehavior(defaultBehaviors[0], props.viewerProtocolPolicy),
+      cacheBehaviors: otherBehaviors.length > 0 ? otherBehaviors : undefined,
+    };
 
     if (props.aliasConfiguration && props.viewerCertificate) {
       throw new Error([
@@ -984,6 +989,26 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
     this.domainName = distribution.attrDomainName;
     this.distributionDomainName = distribution.attrDomainName;
     this.distributionId = distribution.ref;
+  }
+
+  /**
+   * Adds an IAM policy statement associated with this distribution to an IAM
+   * principal's policy.
+   *
+   * @param identity The principal
+   * @param actions The set of actions to allow (i.e. "cloudfront:ListInvalidations")
+   */
+  public grant(identity: iam.IGrantable, ...actions: string[]): iam.Grant {
+    return iam.Grant.addToPrincipal({ grantee: identity, actions, resourceArns: [formatDistributionArn(this)] });
+  }
+
+  /**
+   * Grant to create invalidations for this bucket to an IAM principal (Role/Group/User).
+   *
+   * @param identity The principal
+   */
+  grantCreateInvalidation(identity: iam.IGrantable): iam.Grant {
+    return this.grant(identity, 'cloudfront:CreateInvalidation');
   }
 
   private toBehavior(input: BehaviorWithOrigin, protoPolicy?: ViewerProtocolPolicy) {

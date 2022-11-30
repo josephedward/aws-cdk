@@ -402,6 +402,22 @@ describe('with intercepted network calls', () => {
       // THEN
       expect((await sdk.currentAccount()).accountId).toEqual(uniq('88888'));
     });
+
+    test('if AssumeRole fails because of ExpiredToken, then fail completely', async () => {
+      // GIVEN
+      prepareCreds({
+        fakeSts,
+        config: {
+          default: { aws_access_key_id: 'foo', $account: '88888' },
+        },
+      });
+      const provider = await providerFromProfile(undefined);
+
+      // WHEN - assumeRole fails with a specific error
+      await expect(async () => {
+        await provider.forEnvironment(env(uniq('88888')), Mode.ForReading, { assumeRoleArn: '<FAIL:ExpiredToken>' });
+      }).rejects.toThrow(/ExpiredToken/);
+    });
   });
 
   describe('Plugins', () => {
@@ -537,6 +553,18 @@ describe('with intercepted network calls', () => {
   test('defaultAccount returns undefined if STS call fails', async () => {
     // GIVEN
     process.env.AWS_ACCESS_KEY_ID = `${uid}akid`;
+    process.env.AWS_SECRET_ACCESS_KEY = 'sekrit';
+
+    // WHEN
+    const provider = await providerFromProfile(undefined);
+
+    // THEN
+    await expect(provider.defaultAccount()).resolves.toBe(undefined);
+  });
+
+  test('defaultAccount returns undefined, event if STS call fails with ExpiredToken', async () => {
+    // GIVEN
+    process.env.AWS_ACCESS_KEY_ID = `${uid}'<FAIL:ExpiredToken>'`;
     process.env.AWS_SECRET_ACCESS_KEY = 'sekrit';
 
     // WHEN

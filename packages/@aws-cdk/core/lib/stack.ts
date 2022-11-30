@@ -7,6 +7,7 @@ import * as minimatch from 'minimatch';
 import { Annotations } from './annotations';
 import { App } from './app';
 import { Arn, ArnComponents, ArnFormat } from './arn';
+import { Aspects } from './aspect';
 import { DockerImageAssetLocation, DockerImageAssetSource, FileAssetLocation, FileAssetSource } from './assets';
 import { CfnElement } from './cfn-element';
 import { Fn } from './cfn-fn';
@@ -15,6 +16,7 @@ import { CfnResource, TagType } from './cfn-resource';
 import { ContextProvider } from './context-provider';
 import { Environment } from './environment';
 import { FeatureFlags } from './feature-flags';
+import { PermissionsBoundary, PERMISSIONS_BOUNDARY_CONTEXT_KEY } from './permissions-boundary';
 import { CLOUDFORMATION_TOKEN_RESOLVER, CloudFormationLang } from './private/cloudformation-lang';
 import { LogicalIDs } from './private/logical-id';
 import { resolve } from './private/resolve';
@@ -139,6 +141,26 @@ export interface StackProps {
    * 'aws:cdk:version-reporting' context key
    */
   readonly analyticsReporting?: boolean;
+
+  /**
+   * Enable this flag to allow native cross region stack references.
+   *
+   * Enabling this will create a CloudFormation custom resource
+   * in both the producing stack and consuming stack in order to perform the export/import
+   *
+   * This feature is currently experimental
+   *
+   * @default false
+   */
+  readonly crossRegionReferences?: boolean;
+
+  /**
+   * Options for applying a permissions boundary to all IAM Roles
+   * and Users created within this Stage
+   *
+   * @default - no permissions boundary is applied
+   */
+  readonly permissionsBoundary?: PermissionsBoundary;
 }
 
 /**
@@ -207,9 +229,9 @@ export class Stack extends Construct implements ITaggable {
    * This value is resolved according to the following rules:
    *
    * 1. The value provided to `env.region` when the stack is defined. This can
-   *    either be a concerete region (e.g. `us-west-2`) or the `Aws.region`
+   *    either be a concerete region (e.g. `us-west-2`) or the `Aws.REGION`
    *    token.
-   * 3. `Aws.region`, which is represents the CloudFormation intrinsic reference
+   * 3. `Aws.REGION`, which is represents the CloudFormation intrinsic reference
    *    `{ "Ref": "AWS::Region" }` encoded as a string token.
    *
    * Preferably, you should use the return value as an opaque string and not
@@ -229,9 +251,9 @@ export class Stack extends Construct implements ITaggable {
    * This value is resolved according to the following rules:
    *
    * 1. The value provided to `env.account` when the stack is defined. This can
-   *    either be a concerete account (e.g. `585695031111`) or the
-   *    `Aws.accountId` token.
-   * 3. `Aws.accountId`, which represents the CloudFormation intrinsic reference
+   *    either be a concrete account (e.g. `585695031111`) or the
+   *    `Aws.ACCOUNT_ID` token.
+   * 3. `Aws.ACCOUNT_ID`, which represents the CloudFormation intrinsic reference
    *    `{ "Ref": "AWS::AccountId" }` encoded as a string token.
    *
    * Preferably, you should use the return value as an opaque string and not
@@ -254,7 +276,7 @@ export class Stack extends Construct implements ITaggable {
    * environment.
    *
    * If either `stack.account` or `stack.region` are not concrete values (e.g.
-   * `Aws.account` or `Aws.region`) the special strings `unknown-account` and/or
+   * `Aws.ACCOUNT_ID` or `Aws.REGION`) the special strings `unknown-account` and/or
    * `unknown-region` will be used respectively to indicate this stack is
    * region/account-agnostic.
    */
@@ -301,6 +323,13 @@ export class Stack extends Construct implements ITaggable {
   public readonly _versionReportingEnabled: boolean;
 
   /**
+   * Whether cross region references are enabled for this stack
+   *
+   * @internal
+   */
+  public readonly _crossRegionReferences: boolean;
+
+  /**
    * Logical ID generation strategy
    */
   private readonly _logicalIds: LogicalIDs;
@@ -344,6 +373,7 @@ export class Stack extends Construct implements ITaggable {
     this._missingContext = new Array<cxschema.MissingContext>();
     this._stackDependencies = { };
     this.templateOptions = { };
+    this._crossRegionReferences = !!props.crossRegionReferences;
 
     Object.defineProperty(this, STACK_SYMBOL, { value: true });
 
@@ -400,6 +430,82 @@ export class Stack extends Construct implements ITaggable {
       ? new DefaultStackSynthesizer()
       : new LegacyStackSynthesizer());
     this.synthesizer.bind(this);
+
+    props.permissionsBoundary?._bind(this);
+
+    // add the permissions boundary aspect
+    this.addPermissionsBoundaryAspect();
+  }
+
+  /**
+   * If a permissions boundary has been applied on this scope or any parent scope
+   * then this will return the ARN of the permissions boundary.
+   *
+   * This will return the permissions boundary that has been applied to the most
+   * specific scope.
+   *
+   * For example:
+   *
+   * const stage = new Stage(app, 'stage', {
+   *   permissionsBoundary: PermissionsBoundary.fromName('stage-pb'),
+   * });
+   *
+   * const stack = new Stack(stage, 'Stack', {
+   *   permissionsBoundary: PermissionsBoundary.fromName('some-other-pb'),
+   * });
+   *
+   *  Stack.permissionsBoundaryArn === 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/some-other-pb';
+   *
+   * @param scope the construct scope to retrieve the permissions boundary name from
+   * @returns the name of the permissions boundary or undefined if not set
+   */
+  private get permissionsBoundaryArn(): string | undefined {
+    const qualifier = this.synthesizer.bootstrapQualifier
+      ?? this.node.tryGetContext(BOOTSTRAP_QUALIFIER_CONTEXT)
+      ?? DefaultStackSynthesizer.DEFAULT_QUALIFIER;
+    const spec = new StringSpecializer(this, qualifier);
+    const context = this.node.tryGetContext(PERMISSIONS_BOUNDARY_CONTEXT_KEY);
+    let arn: string | undefined;
+    if (context && context.arn) {
+      arn = spec.specialize(context.arn);
+    } else if (context && context.name) {
+      arn = spec.specialize(this.formatArn({
+        service: 'iam',
+        resource: 'policy',
+        region: '',
+        resourceName: context.name,
+      }));
+    }
+    if (arn &&
+      (arn.includes('${Qualifier}')
+      || arn.includes('${AWS::AccountId}')
+      || arn.includes('${AWS::Region}')
+      || arn.includes('${AWS::Partition}'))) {
+      throw new Error(`The permissions boundary ${arn} includes a pseudo parameter, ` +
+      'which is not supported for environment agnostic stacks');
+    }
+    return arn;
+  }
+
+  /**
+   * Adds an aspect to the stack that will apply the permissions boundary.
+   * This will only add the aspect if the permissions boundary has been set
+   */
+  private addPermissionsBoundaryAspect(): void {
+    const permissionsBoundaryArn = this.permissionsBoundaryArn;
+    if (permissionsBoundaryArn) {
+      Aspects.of(this).add({
+        visit(node: IConstruct) {
+          if (
+            CfnResource.isCfnResource(node) &&
+              (node.cfnResourceType == 'AWS::IAM::Role' || node.cfnResourceType == 'AWS::IAM::User')
+          ) {
+            node.addPropertyOverride('PermissionsBoundary', permissionsBoundaryArn);
+          }
+        },
+      });
+
+    }
   }
 
   /**
@@ -501,7 +607,7 @@ export class Stack extends Construct implements ITaggable {
    * scheme based on the construct path to ensure uniqueness.
    *
    * If you wish to obtain the deploy-time AWS::StackName intrinsic,
-   * you can use `Aws.stackName` directly.
+   * you can use `Aws.STACK_NAME` directly.
    */
   public get stackName(): string {
     return this._stackName;
@@ -511,10 +617,15 @@ export class Stack extends Construct implements ITaggable {
    * The partition in which this stack is defined
    */
   public get partition(): string {
-    // Always return a non-scoped partition intrinsic. These will usually
-    // be used to construct an ARN, but there are no cross-partition
-    // calls anyway.
-    return Aws.PARTITION;
+    // Return a non-scoped partition intrinsic when the stack's region is
+    // unresolved or unknown.  Otherwise we will return the partition name as
+    // a literal string.
+    if (!FeatureFlags.of(this).isEnabled(cxapi.ENABLE_PARTITION_LITERALS) || Token.isUnresolved(this.region)) {
+      return Aws.PARTITION;
+    } else {
+      const partition = RegionInfo.get(this.region).partition;
+      return partition ?? Aws.PARTITION;
+    }
   }
 
   /**
@@ -726,6 +837,19 @@ export class Stack extends Construct implements ITaggable {
   }
 
   /**
+   * Adds an arbitary key-value pair, with information you want to record about the stack.
+   * These get translated to the Metadata section of the generated template.
+   *
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/metadata-section-structure.html
+   */
+  public addMetadata(key: string, value: any) {
+    if (!this.templateOptions.metadata) {
+      this.templateOptions.metadata = {};
+    }
+    this.templateOptions.metadata[key] = value;
+  }
+
+  /**
    * Called implicitly by the `addDependency` helper function in order to
    * realize a dependency between two top-level stacks at the assembly level.
    *
@@ -832,11 +956,14 @@ export class Stack extends Construct implements ITaggable {
     }
 
     const partitions = Node.of(this).tryGetContext(cxapi.TARGET_PARTITIONS);
-    if (partitions !== undefined && !Array.isArray(partitions)) {
-      throw new Error(`Context value '${cxapi.TARGET_PARTITIONS}' should be a list of strings, got: ${JSON.stringify(cxapi.TARGET_PARTITIONS)}`);
+    if (partitions !== undefined && partitions !== 'undefined' && !Array.isArray(partitions)) {
+      throw new Error(`Context value '${cxapi.TARGET_PARTITIONS}' should be a list of strings, got: ${JSON.stringify(partitions)}`);
     }
 
-    const lookupMap = partitions ? RegionInfo.limitedRegionMap(factName, partitions) : RegionInfo.regionMap(factName);
+    const lookupMap =
+      partitions !== undefined && partitions !== 'undefined'
+        ? RegionInfo.limitedRegionMap(factName, partitions)
+        : RegionInfo.regionMap(factName);
 
     return deployTimeLookup(this, factName, lookupMap, defaultValue);
   }
@@ -902,17 +1029,9 @@ export class Stack extends Construct implements ITaggable {
       throw new Error('exportValue: either supply \'name\' or make sure to export a resource attribute (like \'bucket.bucketName\')');
     }
 
-    // if exportValue is being called manually (which is pre onPrepare) then the logicalId
-    // could potentially be changed by a call to overrideLogicalId. This would cause our Export/Import
-    // to have an incorrect id. For a better user experience, lock the logicalId and throw an error
-    // if the user tries to override the id _after_ calling exportValue
-    if (CfnElement.isCfnElement(resolvable.target)) {
-      resolvable.target._lockLogicalId();
-    }
-
     // "teleport" the value here, in case it comes from a nested stack. This will also
     // ensure the value is from our own scope.
-    const exportable = referenceNestedStackValueInParent(resolvable, this);
+    const exportable = getExportable(this, resolvable);
 
     // Ensure a singleton "Exports" scoping Construct
     // This mostly exists to trigger LogicalID munging, which would be
@@ -1166,12 +1285,11 @@ export class Stack extends Construct implements ITaggable {
    * Indicates whether the stack requires bundling or not
    */
   public get bundlingRequired() {
-    const bundlingStacks: string[] = this.node.tryGetContext(cxapi.BUNDLING_STACKS) ?? ['*'];
+    const bundlingStacks: string[] = this.node.tryGetContext(cxapi.BUNDLING_STACKS) ?? ['**'];
 
-    // bundlingStacks is of the form `Stage/Stack`, convert it to `Stage-Stack` before comparing to stack name
     return bundlingStacks.some(pattern => minimatch(
-      this.stackName,
-      pattern.replace('/', '-'),
+      this.node.path, // use the same value for pattern matching as the aws-cdk CLI (displayName / hierarchicalId)
+      pattern,
     ));
   }
 }
@@ -1381,11 +1499,12 @@ import { FileSystem } from './fs';
 import { Names } from './names';
 import { Reference } from './reference';
 import { IResolvable } from './resolvable';
-import { DefaultStackSynthesizer, IStackSynthesizer, ISynthesisSession, LegacyStackSynthesizer } from './stack-synthesizers';
+import { DefaultStackSynthesizer, IStackSynthesizer, ISynthesisSession, LegacyStackSynthesizer, BOOTSTRAP_QUALIFIER_CONTEXT } from './stack-synthesizers';
+import { StringSpecializer } from './stack-synthesizers/_shared';
 import { Stage } from './stage';
 import { ITaggable, TagManager } from './tag-manager';
 import { Token, Tokenization } from './token';
-import { referenceNestedStackValueInParent } from './private/refs';
+import { getExportable } from './private/refs';
 import { Fact, RegionInfo } from '@aws-cdk/region-info';
 import { deployTimeLookup } from './private/region-lookup';
 import { makeUniqueResourceName } from './private/unique-resource-name';

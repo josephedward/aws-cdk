@@ -129,6 +129,16 @@ export enum InstanceClass {
   R5 = 'r5',
 
   /**
+   * Memory optimized instances based on AMD EPYC, 6th generation
+   */
+  MEMORY6_AMD = 'memory6-amd',
+
+  /**
+   * Memory optimized instances based on AMD EPYC, 6th generation
+   */
+  R6A = 'r6a',
+
+  /**
    * Memory optimized instances, 6th generation with Intel Xeon Scalable processors (3rd generation processors code named Ice Lake)
    */
   MEMORY6_INTEL = 'memory6-intel',
@@ -364,8 +374,8 @@ export enum InstanceClass {
   COMPUTE6_INTEL = 'compute6-intel',
 
   /**
-  * Compute optimized instances, 6th generation
-  */
+   * Compute optimized instances, 6th generation
+   */
   C6I = 'c6i',
 
   /**
@@ -379,13 +389,23 @@ export enum InstanceClass {
   C6ID = 'c6id',
 
   /**
-  * Compute optimized instances based on AMD EPYC (codename Milan), 6th generation
-  */
+   * Compute optimized instances for high performance computing, 6th generation
+   */
+  COMPUTE6_INTEL_HIGH_PERFORMANCE = 'compute6-intel-high-performance',
+
+  /**
+   * Compute optimized instances for high performance computing, 6th generation
+   */
+  C6IN = 'c6in',
+
+  /**
+   * Compute optimized instances based on AMD EPYC (codename Milan), 6th generation
+   */
   COMPUTE6_AMD = 'compute6-amd',
 
   /**
-  * Compute optimized instances based on AMD EPYC (codename Milan), 6th generation
-  */
+   * Compute optimized instances based on AMD EPYC (codename Milan), 6th generation
+   */
   C6A = 'c6a',
 
   /**
@@ -426,7 +446,6 @@ export enum InstanceClass {
    */
   COMPUTE6_GRAVITON2_HIGH_NETWORK_BANDWITH = 'compute6-graviton2-high-network-banwidth',
 
-
   /**
    * Compute optimized instances for high performance computing, 6th generation with Graviton2 processors
    * and high network bandwidth capabilities
@@ -465,8 +484,8 @@ export enum InstanceClass {
   STORAGE3_ENHANCED_NETWORK = 'storage3-enhanced-network',
 
   /**
-  * Storage-optimized instances, 3rd generation
-  */
+   * Storage-optimized instances, 3rd generation
+   */
   D3EN = 'd3en',
 
   /**
@@ -619,7 +638,7 @@ export enum InstanceClass {
   MEMORY_INTENSIVE_2_XT_INTEL = 'memory_intensive_2_xt_intel',
 
   /**
-   *  Memory-intensive instances with higher network bandwith, local NVME drive, and extended memory. Intel Xeon Scalable (Ice Lake) processors
+   * Memory-intensive instances with higher network bandwith, local NVME drive, and extended memory. Intel Xeon Scalable (Ice Lake) processors
    */
   X2IEDN = 'x2iedn',
 
@@ -709,8 +728,8 @@ export enum InstanceClass {
   GRAPHICS5_GRAVITON2 = 'graphics5-graviton2',
 
   /**
-  * Graphics-optimized instances powered by AWS Graviton2 Processors and NVIDIA T4G Tensor Core GPUs, 5th generation
-  */
+   * Graphics-optimized instances powered by AWS Graviton2 Processors and NVIDIA T4G Tensor Core GPUs, 5th generation
+   */
   G5G = 'g5g',
 
   /**
@@ -742,6 +761,16 @@ export enum InstanceClass {
    * Parallel-processing optimized instances with local NVME drive for high performance computing, 3rd generation
    */
   P3DN = 'p3dn',
+
+  /**
+   * Parallel-processing optimized instances with local NVME drive, extended, 4th generation (in developer preview)
+   */
+  PARALLEL4_NVME_DRIVE_EXTENDED = 'parallel4-nvme-drive-extended',
+
+  /**
+   * Parallel-processing optimized instances with local NVME drive, extended, 4th generation (in developer preview)
+   */
+  P4DE = 'p4de',
 
   /**
    * Parallel-processing optimized instances, 4th generation
@@ -799,8 +828,8 @@ export enum InstanceClass {
   STANDARD6_AMD = 'standard6-amd',
 
   /**
-  * Standard instances based on 3rd Gen AMD EPYC processors, 6th generation.
-  */
+   * Standard instances based on 3rd Gen AMD EPYC processors, 6th generation.
+   */
   M6A = 'm6a',
 
   /**
@@ -1046,6 +1075,8 @@ export class InstanceType {
       [InstanceClass.R4]: 'r4',
       [InstanceClass.MEMORY5]: 'r5',
       [InstanceClass.R5]: 'r5',
+      [InstanceClass.MEMORY6_AMD]: 'r6a',
+      [InstanceClass.R6A]: 'r6a',
       [InstanceClass.MEMORY6_INTEL]: 'r6i',
       [InstanceClass.R6I]: 'r6i',
       [InstanceClass.MEMORY6_INTEL_NVME_DRIVE]: 'r6id',
@@ -1094,6 +1125,8 @@ export class InstanceType {
       [InstanceClass.C5N]: 'c5n',
       [InstanceClass.COMPUTE6_INTEL]: 'c6i',
       [InstanceClass.C6I]: 'c6i',
+      [InstanceClass.COMPUTE6_INTEL_HIGH_PERFORMANCE]: 'c6in',
+      [InstanceClass.C6IN]: 'c6in',
       [InstanceClass.COMPUTE6_INTEL_NVME_DRIVE]: 'c6id',
       [InstanceClass.C6ID]: 'c6id',
       [InstanceClass.COMPUTE6_AMD]: 'c6a',
@@ -1159,6 +1192,8 @@ export class InstanceType {
       [InstanceClass.P3]: 'p3',
       [InstanceClass.PARALLEL3_NVME_DRIVE_HIGH_PERFORMANCE]: 'p3dn',
       [InstanceClass.P3DN]: 'p3dn',
+      [InstanceClass.PARALLEL4_NVME_DRIVE_EXTENDED]: 'p4de',
+      [InstanceClass.P4DE]: 'p4de',
       [InstanceClass.PARALLEL4]: 'p4d',
       [InstanceClass.P4D]: 'p4d',
       [InstanceClass.ARM1]: 'a1',

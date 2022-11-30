@@ -32,6 +32,7 @@ describe('KinesisEventSource', () => {
               'kinesis:SubscribeToShard',
               'kinesis:DescribeStream',
               'kinesis:ListStreams',
+              'kinesis:DescribeStreamConsumer',
             ],
             'Effect': 'Allow',
             'Resource': {
@@ -262,5 +263,25 @@ describe('KinesisEventSource', () => {
       'Enabled': false,
     });
 
+  });
+
+  test('AT_TIMESTAMP starting position', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const fn = new TestFunction(stack, 'Fn');
+    const stream = new kinesis.Stream(stack, 'S');
+    const eventSource = new sources.KinesisEventSource(stream, {
+      startingPosition: lambda.StartingPosition.AT_TIMESTAMP,
+      startingPositionTimestamp: 1640995200,
+    });
+
+    // WHEN
+    fn.addEventSource(eventSource);
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+      StartingPosition: 'AT_TIMESTAMP',
+      StartingPositionTimestamp: 1640995200,
+    });
   });
 });

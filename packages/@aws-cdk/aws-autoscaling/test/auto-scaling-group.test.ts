@@ -665,7 +665,7 @@ describe('auto scaling group', () => {
     expect(asg.node.defaultChild instanceof autoscaling.CfnAutoScalingGroup).toEqual(true);
   });
 
-  test('can set blockDeviceMappings', () => {
+  testDeprecated('can set blockDeviceMappings', () => {
     // GIVEN
     const stack = new cdk.Stack();
     const vpc = mockVpc(stack);
@@ -699,6 +699,12 @@ describe('auto scaling group', () => {
       }, {
         deviceName: 'none',
         volume: autoscaling.BlockDeviceVolume.noDevice(),
+      }, {
+        deviceName: 'gp3-with-throughput',
+        volume: autoscaling.BlockDeviceVolume.ebs(15, {
+          volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+          throughput: 350,
+        }),
       }],
     });
 
@@ -738,6 +744,14 @@ describe('auto scaling group', () => {
         {
           DeviceName: 'none',
           NoDevice: true,
+        },
+        {
+          DeviceName: 'gp3-with-throughput',
+          Ebs: {
+            VolumeSize: 15,
+            VolumeType: 'gp3',
+            Throughput: 350,
+          },
         },
       ],
     });
@@ -807,6 +821,71 @@ describe('auto scaling group', () => {
         maxInstanceLifetime: cdk.Duration.days(366),
       });
     }).toThrow(/maxInstanceLifetime must be between 1 and 365 days \(inclusive\)/);
+  });
+
+  test.each([124, 1001])('throws if throughput is set less than 125 or more than 1000', (throughput) => {
+    const stack = new cdk.Stack();
+    const vpc = mockVpc(stack);
+
+    expect(() => {
+      new autoscaling.AutoScalingGroup(stack, 'MyStack', {
+        machineImage: new ec2.AmazonLinuxImage(),
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.M4, ec2.InstanceSize.MICRO),
+        vpc,
+        maxInstanceLifetime: cdk.Duration.days(0),
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: autoscaling.BlockDeviceVolume.ebs(15, {
+            volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+            throughput,
+          }),
+        }],
+      });
+    }).toThrow(/throughput property takes a minimum of 125 and a maximum of 1000/);
+  });
+
+  test.each([
+    ...Object.values(autoscaling.EbsDeviceVolumeType).filter((v) => v !== 'gp3'),
+  ])('throws if throughput is set on any volume type other than GP3', (volumeType) => {
+    const stack = new cdk.Stack();
+    const vpc = mockVpc(stack);
+
+    expect(() => {
+      new autoscaling.AutoScalingGroup(stack, 'MyStack', {
+        machineImage: new ec2.AmazonLinuxImage(),
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.M4, ec2.InstanceSize.MICRO),
+        vpc,
+        maxInstanceLifetime: cdk.Duration.days(0),
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: autoscaling.BlockDeviceVolume.ebs(15, {
+            volumeType: volumeType,
+            throughput: 150,
+          }),
+        }],
+      });
+    }).toThrow(/throughput property requires volumeType: EbsDeviceVolumeType.GP3/);
+  });
+
+  test('throws if throughput / iops ratio is greater than 0.25', () => {
+    const stack = new cdk.Stack();
+    const vpc = mockVpc(stack);
+    expect(() => {
+      new autoscaling.AutoScalingGroup(stack, 'MyStack', {
+        machineImage: new ec2.AmazonLinuxImage(),
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.M4, ec2.InstanceSize.MICRO),
+        vpc,
+        maxInstanceLifetime: cdk.Duration.days(0),
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: autoscaling.BlockDeviceVolume.ebs(15, {
+            volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+            throughput: 751,
+            iops: 3000,
+          }),
+        }],
+      });
+    }).toThrow('Throughput (MiBps) to iops ratio of 0.25033333333333335 is too high; maximum is 0.25 MiBps per iops');
   });
 
   test('can configure instance monitoring', () => {
@@ -1525,6 +1604,7 @@ describe('auto scaling group', () => {
       launchTemplateId: 'test-lt-id',
       versionNumber: '0',
     });
+    const vpc = mockVpc(stack);
 
     // THEN
     expect(() => {
@@ -1535,9 +1615,16 @@ describe('auto scaling group', () => {
           generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
           cpuType: AmazonLinuxCpuType.X86_64,
         }),
-        vpc: mockVpc(stack),
+        vpc,
       });
     }).toThrow('Setting \'machineImage\' must not be set when \'launchTemplate\' or \'mixedInstancesPolicy\' is set');
+    expect(() => {
+      new autoscaling.AutoScalingGroup(stack, 'imported-lt-asg-2', {
+        launchTemplate: lt,
+        associatePublicIpAddress: true,
+        vpc,
+      });
+    }).toThrow('Setting \'associatePublicIpAddress\' must not be set when \'launchTemplate\' or \'mixedInstancesPolicy\' is set');
   });
 
   test('Cannot specify Launch Template without instance type', () => {
@@ -1817,7 +1904,7 @@ test('can use Vpc imported from unparseable list tokens', () => {
     vpc,
     allowAllOutbound: false,
     associatePublicIpAddress: false,
-    vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_NAT },
+    vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
   });
 
   // THEN
