@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const child_process_1 = require("child_process");
+const path = require("path");
+test('queue handler', () => {
+    const testScript = path.join(__dirname, 'queue-handler', 'test.sh');
+    const result = child_process_1.spawnSync(testScript, { stdio: 'inherit' });
+    expect(result.status).toBe(0);
+});
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoicXVldWUubGFtYmRhLnRlc3QuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyJxdWV1ZS5sYW1iZGEudGVzdC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOztBQUFBLGlEQUEwQztBQUMxQyw2QkFBNkI7QUFFN0IsSUFBSSxDQUFDLGVBQWUsRUFBRSxHQUFHLEVBQUU7SUFDekIsTUFBTSxVQUFVLEdBQUcsSUFBSSxDQUFDLElBQUksQ0FBQyxTQUFTLEVBQUUsZUFBZSxFQUFFLFNBQVMsQ0FBQyxDQUFDO0lBQ3BFLE1BQU0sTUFBTSxHQUFHLHlCQUFTLENBQUMsVUFBVSxFQUFFLEVBQUUsS0FBSyxFQUFFLFNBQVMsRUFBRSxDQUFDLENBQUM7SUFDM0QsTUFBTSxDQUFDLE1BQU0sQ0FBQyxNQUFNLENBQUMsQ0FBQyxJQUFJLENBQUMsQ0FBQyxDQUFDLENBQUM7QUFDaEMsQ0FBQyxDQUFDLENBQUMiLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBzcGF3blN5bmMgfSBmcm9tICdjaGlsZF9wcm9jZXNzJztcbmltcG9ydCAqIGFzIHBhdGggZnJvbSAncGF0aCc7XG5cbnRlc3QoJ3F1ZXVlIGhhbmRsZXInLCAoKSA9PiB7XG4gIGNvbnN0IHRlc3RTY3JpcHQgPSBwYXRoLmpvaW4oX19kaXJuYW1lLCAncXVldWUtaGFuZGxlcicsICd0ZXN0LnNoJyk7XG4gIGNvbnN0IHJlc3VsdCA9IHNwYXduU3luYyh0ZXN0U2NyaXB0LCB7IHN0ZGlvOiAnaW5oZXJpdCcgfSk7XG4gIGV4cGVjdChyZXN1bHQuc3RhdHVzKS50b0JlKDApO1xufSk7XG4iXX0=
